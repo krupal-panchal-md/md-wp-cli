@@ -62,7 +62,7 @@ class Yoast_Posts_Import extends WP_CLI_Base {
 	 * ## EXAMPLES
 	 *
 	 * # Complete the test.
-	 * $ wp yoast-posts import --post-type=page --file=/path-to-yoast-page-meta.csv --dry-run=true --format-type=text
+	 * $ wp yoast-posts import --post-type=page --file=wp-content/uploads/yoast-data.csv --dry-run=true --format-type=text
 	 * Success: Posts Imported successfully!!!
 	 *
 	 * @subcommand import
