@@ -6,7 +6,7 @@
  *
  * @author Krupal Panchal <krupal.panchal@multidots.com>
  *
- * @package wp-cli
+ * @package md-wp-cli
  */
 
 /**
@@ -61,7 +61,7 @@ class Yoast_Posts_Import extends WP_CLI_Base {
 	 *
 	 * ## EXAMPLES
 	 *
-	 * # Complete the test.
+	 * # Complete the import.
 	 * $ wp yoast-posts import --post-type=page --file=wp-content/uploads/yoast-data.csv --dry-run=true --format-type=text
 	 * Success: Posts Imported successfully!!!
 	 *

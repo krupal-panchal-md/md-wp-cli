@@ -4,7 +4,7 @@
  *
  * @author Krupal Panchal <krupal.panchal@multidots.com>
  *
- * @package wp-cli
+ * @package md-wp-cli
  */
 
 /**
@@ -20,6 +20,7 @@ class WP_CLI_Commands {
 	protected array $commands = array(
 		Test_Complete::class,
 		Yoast_Posts_Import::class,
+		Woo_Products_Migrate::class,
 	);
 
 	/**
@@ -46,7 +47,7 @@ class WP_CLI_Commands {
 		$class_name = str_replace( '_', '-', $class_name );
 		$class_name = strtolower( $class_name );
 
-		$get_file = get_template_directory() . "/wp-cli/commands/class-$class_name.php";
+		$get_file = plugin_dir_path( __DIR__ ) . "wp-cli/commands/class-$class_name.php";
 
 		file_exists( $get_file ) ? require_once $get_file : '';
 	}
@@ -63,11 +64,23 @@ class WP_CLI_Commands {
 			return;
 		}
 
-		if ( ! empty( $this->commands ) ) {
-			foreach ( $this->commands as $command ) {
-				WP_CLI::add_command( $command::COMMAND_NAME, $command );
+		// Hook into the plugins_loaded action to register commands after all plugins have been loaded.
+		add_action(
+			'plugins_loaded',
+			function () {
+				if ( ! empty( $this->commands ) ) {
+					foreach ( $this->commands as $command ) {
+						WP_CLI::add_command( $command::COMMAND_NAME, $command );
+					}
+				}
 			}
-		}
+		);
+
+		// if ( ! empty( $this->commands ) ) {
+		// 	foreach ( $this->commands as $command ) {
+		// 		WP_CLI::add_command( $command::COMMAND_NAME, $command );
+		// 	}
+		// }
 	}
 } // end class.
 

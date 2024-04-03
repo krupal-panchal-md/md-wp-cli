@@ -7,7 +7,7 @@
  * Author URI: https://krupalpanchal.in/
  * License: GPL2
  *
- * @package wp-cli
+ * @package md-wp-cli
  */
 
 // Include WP CLI Commands.

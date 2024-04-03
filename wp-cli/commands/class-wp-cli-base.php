@@ -4,7 +4,7 @@
  *
  * @author Krupal Panchal
  *
- * @package wp-cli
+ * @package md-wp-cli
  */
 
 /**
