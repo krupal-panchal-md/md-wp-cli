@@ -64,23 +64,11 @@ class WP_CLI_Commands {
 			return;
 		}
 
-		// Hook into the plugins_loaded action to register commands after all plugins have been loaded.
-		add_action(
-			'plugins_loaded',
-			function () {
-				if ( ! empty( $this->commands ) ) {
-					foreach ( $this->commands as $command ) {
-						WP_CLI::add_command( $command::COMMAND_NAME, $command );
-					}
-				}
+		if ( ! empty( $this->commands ) ) {
+			foreach ( $this->commands as $command ) {
+				WP_CLI::add_command( $command::COMMAND_NAME, $command );
 			}
-		);
-
-		// if ( ! empty( $this->commands ) ) {
-		// 	foreach ( $this->commands as $command ) {
-		// 		WP_CLI::add_command( $command::COMMAND_NAME, $command );
-		// 	}
-		// }
+		}
 	}
 } // end class.
 
