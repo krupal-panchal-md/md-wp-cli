@@ -53,7 +53,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 	 *
 	 * [--categories=<categories>]
 	 * : Product categories. Comma separated. Use category slug.
-	 * Example: --categories="cat1,cat2,cat3"
+	 * Example: --categories=cat1,cat2,cat3
 	 *
 	 * ## OPTIONS
 	 *
@@ -259,14 +259,17 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 	 * Method to check if product is exist in the sub site.
 	 *
 	 * @param string $slug Product Slug.
+	 * @param string $post_type Post Type.
 	 *
 	 * @return int|false Returns product ID if product exist else FALSE.
 	 */
-	public function get_product_if_exist( string $slug ): int|false {
+	public function get_product_if_exist( string $slug, string $post_type = '' ): int|false {
+
+		$post_type = ! empty( $post_type ) ? $post_type : static::POST_TYPE;
 
 		$query = new WP_Query(
 			array(
-				'post_type'              => static::POST_TYPE,
+				'post_type'              => $post_type,
 				'name'                   => $slug,
 				'post_status'            => 'publish',
 				'posts_per_page'         => 1,
@@ -332,7 +335,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		}
 
 		// Add default product data.
-		$this->add_default_product_data( $product_id, $product_obj, $product );
+		$this->add_default_product_data( $product_obj, $product );
 
 		// Set product images and terms.
 		$this->maybe_add_product_images( $product, $product_obj );
@@ -358,7 +361,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		}
 
 		// Add default product data.
-		$this->add_default_product_data( $product_id, $product_obj, $product );
+		$this->add_default_product_data( $product_obj, $product );
 
 		// Set product images and terms.
 		$this->maybe_add_product_images( $product, $product_obj );
@@ -376,9 +379,10 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 	 *
 	 * @return void
 	 */
-	public function manage_variation( object $product, object $product_obj ) {
+	public function manage_variation( object $product, object $product_obj ): void {
 
 		$attributes_arr = array();
+		$variations_arr = array();
 
 		// Switch to the 'from_site' site.
 		switch_to_blog( $this->from_site );
@@ -386,34 +390,20 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		// Get the product's attributes.
 		$attributes = $product_obj->get_attributes();
 
-		// Loop through each attribute in the source site.
-		foreach ( $attributes as $attribute_key => $attribute ) {
+		// Get the product's variations.
+		$variations = $product_obj->get_children();
 
-			$taxonomy = $attribute->get_taxonomy_object();
-
-			$attribute_data = $attribute->get_data();
-			$attribute_id   = wc_attribute_taxonomy_id_by_name( $attribute_data->name );
-
-			// Get the attribute options.
-			$options = get_terms(
-				array(
-					'taxonomy'   => wc_attribute_taxonomy_name( $taxonomy->attribute_name ),
-					'hide_empty' => false,
-				)
-			);
-
-			// Add the options to the taxonomy object.
-			$taxonomy->options = $options;
-
-			$attributes_arr[] = $taxonomy;
+		foreach ( $variations as $variation ) {
+			$variations_arr[] = wc_get_product( $variation );
 		}
 
 		// Switch back to the original site.
 		restore_current_blog();
 
-		$this->maybe_add_attributes( $product, $attributes_arr );
+		$this->maybe_add_attributes( $product, $attributes );
+		$this->maybe_add_variations( $product, $variations_arr );
 
-		// $product->save();
+		$product->save();
 	}
 
 	/**
@@ -426,194 +416,83 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 	 */
 	public function maybe_add_attributes( object $product, array $attributes_arr ): void {
 
-		$new_attributes = array();
+		$temp_array = array();
 
-		foreach ( $attributes_arr as $attribute ) {
+		foreach ( $attributes_arr as $attr_data ) {
 
-			$taxonomy_name = wc_attribute_taxonomy_name( $attribute->attribute_name );
+			$attribute = $attr_data->get_data();
 
-			$attribute_id = wc_attribute_taxonomy_id_by_name( $taxonomy_name );
-			if ( 0 === $attribute_id ) {
-				// The attribute does not exist, create it.
-				// Create a new attribute object.
-				$new_attribute = new WC_Product_Attribute();
+			$taxonomy    = wc_attribute_taxonomy_name( $attribute['name'] );
+			$taxonomy_id = wc_attribute_taxonomy_id_by_name( $taxonomy );
 
-				// Get the term slugs for the options.
-				$option_slugs = array();
-				foreach ( $attribute->options as $option ) {
-					$option_slugs[] = $option->name;
-				}
-
-				// Set the attribute data.
-				$new_attribute->set_name( $attribute->attribute_name );
-				$new_attribute->set_options( $option_slugs );
-				$new_attribute->set_position( 0 );
-				$new_attribute->set_visible( true );
-				$new_attribute->set_variation( true );
-
-				// Add the attribute to the new attributes array.
-				$new_attributes[] = $new_attribute;
-
-			} else {
-				// The attribute exists, update it.
-				$result = wc_update_attribute(
-					$attribute_id,
+			if ( 0 === $taxonomy_id ) {
+				wc_create_attribute(
 					array(
-						'name'         => $attribute->attribute_label,
-						'slug'         => $attribute->attribute_name,
+						'name'         => $attribute['name'],
+						'type'         => 'select',
+						'order_by'     => 'menu_order',
+						'has_archives' => false,
+					)
+				);
+			} else {
+				wc_update_attribute(
+					$taxonomy_id,
+					array(
+						'name'         => $attribute['name'],
 						'type'         => 'select',
 						'order_by'     => 'menu_order',
 						'has_archives' => false,
 					)
 				);
 			}
+
+			$new_attribute = new WC_Product_Attribute();
+			$new_attribute->set_id( $attribute['id'] );
+			$new_attribute->set_name( $attribute['name'] );
+			$new_attribute->set_options( $attribute['options'] );
+			$new_attribute->set_position( $attribute['position'] );
+			$new_attribute->set_visible( $attribute['is_visible'] );
+			$new_attribute->set_variation( $attribute['is_variation'] );
+			$temp_array[] = $new_attribute;
 		}
 
-		$product->set_attributes( $new_attributes );
+		$product->set_attributes( $temp_array );
+
 		$product->save();
 	}
 
 	/**
-	 * Method to add product attributes.
+	 * Method to add variations.
 	 *
-	 * @param Object $product     New product Object.
-	 * @param Object $product_obj Old product Object.
+	 * @param Object $product       New product Object.
+	 * @param array  $variations_arr Variations Array.
 	 *
 	 * @return void
 	 */
-	public function maybe_add_attributes_test( object $product, object $product_obj ): void {
-
-		$attributes_arr = array();
-		$variation_arr  = array();
-
-		// Switch to the 'from_site' site.
-		switch_to_blog( $this->from_site );
-
-		// Get the product's attributes.
-		$attributes = $product_obj->get_attributes();
-
-		// Loop through each attribute in the source site.
-		foreach ( $attributes as $attribute_key => $attribute ) {
-
-			// Retrieve attribute data.
-			$taxonomy = $attribute->get_taxonomy_object();
-
-			// Get the attribute options.
-			$options = get_terms(
-				array(
-					'taxonomy'   => wc_attribute_taxonomy_name( $taxonomy->attribute_name ),
-					'hide_empty' => false,
-				)
-			);
-
-			// Add the options to the taxonomy object.
-			$taxonomy->options = $options;
-
-			$attributes_arr[] = $taxonomy;
-		}
-
-		// Get the product's variations.
-		$variations = $product_obj->get_children();
-
-		foreach ( $variations as $variation ) {
-			$variation_arr[] = wc_get_product( $variation );
-		}
-
-		// Switch back to the original site.
-		restore_current_blog();
-
-		// Create an array to hold the new attributes.
-		$new_attributes = array();
-
-		// Loop through each attribute.
-		foreach ( $attributes_arr as $attribute ) {
-
-			$attribute_id = wc_attribute_taxonomy_id_by_name( $attribute->attribute_name );
-
-			if ( 0 === $attribute_id ) {
-				// The attribute does not exist, create it.
-				$attribute_id = wc_create_attribute(
-					array(
-						'name'         => $attribute->attribute_name,
-						'slug'         => sanitize_title( $attribute->attribute_name ),
-						'type'         => 'select',
-						'order_by'     => 'menu_order',
-						'has_archives' => false,
-					)
-				);
-			} else {
-				// The attribute exists, update it.
-				$result = wc_update_attribute(
-					$attribute_id,
-					array(
-						'name'         => $attribute->attribute_name,
-						'slug'         => sanitize_title( $attribute->attribute_name ),
-						'type'         => 'select',
-						'order_by'     => 'menu_order',
-						'has_archives' => false,
-					)
-				);
-			}
-
-			// Create a new attribute object.
-			$new_attribute = new WC_Product_Attribute();
-
-			// Get the term slugs for the options.
-			$option_slugs = array();
-			foreach ( $attribute->options as $option ) {
-				$option_slugs[] = $option->name;
-			}
-
-			// Set the attribute data.
-			$new_attribute->set_name( $attribute->attribute_name );
-			$new_attribute->set_options( $option_slugs );
-			$new_attribute->set_position( 0 );
-			$new_attribute->set_visible( true );
-			$new_attribute->set_variation( true );
-
-			// Add the attribute to the new attributes array.
-			$new_attributes[] = $new_attribute;
-		}
-
-		// Set the product's attributes.
-		$product->set_attributes( $new_attributes );
+	public function maybe_add_variations( object $product, array $variations_arr ): void {
 
 		// Loop through each variation.
-		foreach ( $variation_arr as $variation ) {
+		foreach ( $variations_arr as $variation ) {
 
 			// Get the variation data.
 			$variation_data = $variation->get_data();
 
 			// Check if the variation exists.
-			$variation_id = $this->get_product_if_exist( $variation_data['slug'] );
+			$variation_id = $this->get_product_if_exist( $variation_data['slug'], 'product_variation' );
 
 			if ( is_int( $variation_id ) && $variation_id > 0 ) {
-				$new_variation = new WC_Product_Variation();
-			} else {
 				$new_variation = new WC_Product_Variation( $variation_id );
+			} else {
+				$new_variation = new WC_Product_Variation();
 			}
-			$new_variation = new WC_Product_Variation();
 
 			// Set the parent product.
 			$new_variation->set_parent_id( $product->get_id() );
 
-			// Get the variation's attributes.
-			$variation_attributes = $variation->get_attributes();
-
-			// Create an array to hold the attribute slugs.
-			$attribute_slugs = array();
-
-			// Loop through each attribute.
-			foreach ( $variation_attributes as $attribute_name => $attribute_value ) {
-				// Add the attribute slug to the array.
-				$attribute_slugs[ $attribute_name ] = $attribute_value;
-			}
-
-			// Set the variation's attributes.
-			$new_variation->set_attributes( $attribute_slugs );
-
 			// Set the variation data.
+			$new_variation->set_id( $variation_id );
 			$new_variation->set_regular_price( $variation_data['regular_price'] );
+			$new_variation->set_slug( $variation_data['slug'] );
 			$new_variation->set_sale_price( $variation_data['sale_price'] );
 			$new_variation->set_stock_status( $variation_data['stock_status'] );
 			$new_variation->set_manage_stock( $variation_data['manage_stock'] );
@@ -623,10 +502,19 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 			$new_variation->set_width( $variation_data['width'] );
 			$new_variation->set_height( $variation_data['height'] );
 			$new_variation->set_tax_status( $variation_data['tax_status'] );
+			$new_variation->set_sku( $variation_data['sku'] );
+			$new_variation->set_status( $variation_data['status'] );
+			$new_variation->set_downloadable( $variation_data['downloadable'] );
+
+			// // Set the variation's attributes.
+			$new_variation->set_attributes( $variation_data['attributes'] );
 
 			// Save the variation.
 			$new_variation->save();
+
 		}
+
+		$product->save();
 	}
 
 	/**
@@ -646,7 +534,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		}
 
 		// Add default product data.
-		$this->add_default_product_data( $product_id, $product_obj, $product );
+		$this->add_default_product_data( $product_obj, $product );
 
 		// Set external product data.
 		$product->set_button_text( $product_obj->get_button_text() );
@@ -676,7 +564,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		}
 
 		// Add default product data.
-		$this->add_default_product_data( $product_id, $product_obj, $product );
+		$this->add_default_product_data( $product_obj, $product );
 
 		// Set grouped product data.
 		$child_products = $product_obj->get_children();
@@ -726,13 +614,12 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 	/**
 	 * Method to add default product data.
 	 *
-	 * @param int    $product_id  Product ID.
 	 * @param object $product_obj Product Object.
 	 * @param object $product     Product Object.
 	 *
 	 * @return object
 	 */
-	public function add_default_product_data( int $product_id, object $product_obj, object $product ): object {
+	public function add_default_product_data( object $product_obj, object $product ): object {
 
 		$product->set_name( $product_obj->get_name() );
 		$product->set_slug( $product_obj->get_slug() );
@@ -759,7 +646,6 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		$product->set_reviews_allowed( $product_obj->get_reviews_allowed() );
 		$product->set_purchase_note( $product_obj->get_purchase_note() );
 		$product->set_menu_order( $product_obj->get_menu_order() );
-		$product->set_downloadable( $product_obj->get_downloadable() );
 
 		// Set upsell products.
 		$new_upsell_product_ids = $this->get_child_products( $product_obj->get_upsell_ids() );
@@ -768,6 +654,8 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		// Set cross-sell products.
 		$new_cross_sell_product_ids = $this->get_child_products( $product_obj->get_cross_sell_ids() );
 		$product->set_cross_sell_ids( $new_cross_sell_product_ids );
+
+		$product->save();
 
 		return $product;
 	}
@@ -829,7 +717,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 			return $existing_attachment_id;
 		}
 
-		$image_content = file_get_contents( $image_url );
+		$image_content = file_get_contents( $image_url ); // phpcs:ignore
 
 		if ( false === $image_content ) {
 
@@ -881,7 +769,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 					/* translators: %s: Image URL */
 					esc_html__(
 						'Something went wrong on inserting the image: %s',
-						'creative'
+						'md-wp-cli'
 					),
 					esc_url( $image_url )
 				)
