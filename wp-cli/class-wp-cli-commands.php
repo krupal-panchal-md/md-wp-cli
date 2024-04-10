@@ -21,6 +21,8 @@ class WP_CLI_Commands {
 		Test_Complete::class,
 		Yoast_Posts_Import::class,
 		Woo_Products_Migrate::class,
+		Post_Migration::class,
+		External_Posts_Migrate::class,
 	);
 
 	/**
