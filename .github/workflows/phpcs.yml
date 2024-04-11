@@ -1,0 +1,60 @@
+name: PHP Codesniffer
+
+on:
+  push:
+    branches:
+      - '!main'
+      - '*'
+  pull_request:
+    branches:
+      - 'main'
+
+jobs:
+  PHP-Codesniffer:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    #- name: Validate composer.json and composer.lock
+    #  run: composer validate
+
+    - name: Cache Composer packages
+      id: composer-cache
+      uses: actions/cache@v2
+      with:
+        path: vendor
+        key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-php-
+    - name: Install dependencies
+      run: composer install --prefer-dist --no-progress
+    
+    #- name: Run PHPCodesniffer Installer
+    #  run: composer phpcodesniffer-composer-installer
+    
+    #- name: Load Automattic VIPWPCS
+    #  run: composer automattic/vipwpcs
+    
+    - name: Set default PHPCS Standards
+      run: composer set_default
+
+    - name: PHPCS Installed Standards
+      run: composer phpcs_i   
+
+    - name: PHPCBF
+      run: composer phpcbf  
+    
+    - name: PHPCS
+      run: composer phpcs    
+
+    # Add a test script to composer.json, for instance: "test": "vendor/bin/phpunit"
+    # Docs: https://getcomposer.org/doc/articles/scripts.md
+
+    # - name: Run test suite
+    #   run: composer run-script test
+
+
+
+
