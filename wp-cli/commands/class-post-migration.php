@@ -58,7 +58,7 @@ class Post_Migration extends WP_CLI_Base {
 	 *
 	 * @return void
 	 */
-	public function posts(array $args, array $assoc_args ): void {
+	public function posts( array $args, array $assoc_args ): void {
 
 		// Parse the global arguments.
 		$this->_parse_global_arguments( $assoc_args );

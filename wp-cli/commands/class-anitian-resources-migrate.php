@@ -1,6 +1,6 @@
 <?php
 /**
- * Class for External post migration.
+ * Class for Anitian resources migration.
  *
  * Command `migrate`
  *
@@ -10,34 +10,45 @@
  */
 
 /**
- * Class External_Posts_Migrate
+ * Class Anitian_Resources_Migrate
  */
-class External_Posts_Migrate extends WP_CLI_Base {
+class Anitian_Resources_Migrate extends WP_CLI_Base {
 
-	public const COMMAND_NAME = 'migrate';
+	public const COMMAND_NAME = 'anitian-resources';
+
+	/**
+	 * Resource Post type.
+	 *
+	 * @var string
+	 */
+	public const POST_TYPE = 'resources';
+
+	/**
+	 * Resource Taxonomy.
+	 *
+	 * @var string
+	 */
+	public const TAXONOMY = 'resource_categories';
 
 	/**
 	 * Default post type.
 	 *
 	 * @var string
 	 */
-	public const POST_TYPE = 'post';
+	public $post_type = '';
 
 	/**
-	 * Command for external site's post migration.
+	 * Command for Anitian Resources migration.
 	 *
-	 * This command is created for site https://www.pointcentral.com/blog/.
+	 * This command is created for page https://www.anitian.com/resources/.
 	 * And used to find and get content based on the HTML div classes.
 	 * If you want to use this command for other site then you need to change the HTML classes.
 	 *
-	 * [--site_url=<site_url>]
+	 * [--site-url=<site-url>]
 	 * : External Site URL from where we need to migrate.
 	 *
-	 *  [--page-from=<page-from>]
-	 * : Page number from where we need to start migration.
-	 *
-	 * [--page-to=<page-to>]
-	 * : Page number to where we need to end migration.
+	 * [--post-type=<post-type>]
+	 * : Post type in which we need to migrate the resources.
 	 *
 	 * ## OPTIONS
 	 *
@@ -51,117 +62,74 @@ class External_Posts_Migrate extends WP_CLI_Base {
 	 *
 	 * ## EXAMPLES
 	 *
-	 * # Migrate the external posts.
-	 * $ wp migrate external-posts --site_url=https://example.com --page-from=1 --page-to=10 --dry-run=true
-	 * Success: Posts Migrated successfully!!!
+	 * # Migrate the resources.
+	 * $ wp anitian-resources migrate --site_url=https://www.anitian.com/resources/ --post-type=resources --dry-run=true
+	 * Success: Resources Migrated successfully!!!
 	 *
-	 * @subcommand external-posts
+	 * @subcommand migrate
 	 *
 	 * @param array $args       Arguments.
 	 * @param array $assoc_args Associate arguments.
 	 *
 	 * @return void
 	 */
-	public function external_posts( array $args, array $assoc_args ): void {
+	public function migrate( array $args, array $assoc_args ): void {
 
 		// Parse the global arguments.
 		$this->parse_global_arguments( $assoc_args );
 
-		// Check if page the data is provided.
-		$page_from = 1;
-		$page_to   = (int) $assoc_args['page-to'];
-		if ( ! empty( $assoc_args['page-from'] ) ) {
-			$page_from = (int) $assoc_args['page-from'];
-		}
-
-		if ( empty( $assoc_args['page-to'] ) ) {
-			WP_CLI::error( 'You need to provide a --page-to value.' );
-		}
-
 		// Check if site URL is provided.
-		$site_url = untrailingslashit( $assoc_args['site_url'] );
+		$site_url = untrailingslashit( $assoc_args['site-url'] );
 		if (
 			empty( $site_url )
 			|| ! filter_var( $site_url, FILTER_VALIDATE_URL ) ) {
 			WP_CLI::error( 'You need to provide a valid site URL.' );
 		}
+		// Check if post type is provided.
+		$this->post_type = $assoc_args['post-type'] ?? static::POST_TYPE;
+
+		// Check if post type exists.
+		if ( ! post_type_exists( $this->post_type ) ) {
+			WP_CLI::error( 'The provided post type does not exist.' );
+		}
 
 		$this->notify_on_start();
 
-		$sr_num = 1;
+		$sr_num        = 1;
+		$cat_page_urls = $this->get_category_page_urls( $site_url );
+		$page_count    = count( $cat_page_urls );
 
-		for ( $page = $page_from; $page <= $page_to; $page++ ) {
+		foreach ( $cat_page_urls as $cat_name => $cat_url ) {
 
-			$new_site_url = $site_url;
+			$same_layout_item = array(
+				'Documents',
+				'Case Studies',
+				'On-Demand Webinars',
+			);
 
-			// Change the site URL if page is greater than 1.
-			if ( $page > 1 ) {
-				$new_site_url = $site_url . '/page/' . $page;
-			}
+			if ( in_array( $cat_name, $same_layout_item, true ) ) {
+				$doc_case_webinar_posts = $this->migrate_documents_posts( $cat_url );
 
-			$post_urls = $this->get_post_urls( $new_site_url );
+				foreach ( $doc_case_webinar_posts as $post_data ) {
 
-			foreach ( $post_urls as $post_url => $post_title ) {
+					$post_data['categories'] = array( $cat_name );
 
-				if ( ! $this->is_dry_run() ) {
-					$this->migrate_individual_post( $post_url );
-					WP_CLI::log(
-						sprintf(
-							'%d) %s - Post migrated successfully.',
-							$sr_num,
-							$post_title
-						)
-					);
-				} else {
-					WP_CLI::log(
-						sprintf(
-							'%d) %s - Post will be migrated.',
-							$sr_num,
-							$post_title
-						)
-					);
+					if ( ! $this->is_dry_run() ) {
+						$this->insert_or_update_post( $post_data );
+					}
 				}
-				++$sr_num;
 			}
-
-			// Add log and sleep for 2 seconds.
-			WP_CLI::log( '' );
-			WP_CLI::log(
-				sprintf(
-					'Exported posts from page %s.',
-					$page,
-				)
-			);
-			WP_CLI::log( 'Sleep for 2 seconds...' );
-			WP_CLI::log( '' );
-		}
-
-		// Final success message.
-		if ( ! $this->is_dry_run() ) {
-			$this->notify_on_done(
-				sprintf(
-					'Total %d posts migrated.',
-					$sr_num - 1
-				)
-			);
-		} else {
-			$this->notify_on_done(
-				sprintf(
-					'Dry run ended - Total %d posts will be migrated.',
-					$sr_num - 1
-				)
-			);
 		}
 	}
 
 	/**
-	 * Method to get post URLs.
+	 * Method to Get the category page URLs.
 	 *
 	 * @param string $site_url Site URL.
 	 *
 	 * @return array
 	 */
-	public function get_post_urls( string $site_url ): array {
+	public function get_category_page_urls( string $site_url ): array {
 
 		$response = wp_remote_get( $site_url );
 
@@ -182,26 +150,101 @@ class External_Posts_Migrate extends WP_CLI_Base {
 			// Create a new DOMXPath instance.
 			$xpath = new DOMXPath( $dom );
 
-			// Query the DOM for the anchor within the div with class "archive-article-title".
-			$anchors = $xpath->query( '//div[contains(@class, "archive-article-title")]/a' );
+			// Query the DOM for the ul element with the id "menu-resources-menu".
+			$elements = $xpath->query( '//ul[@id="menu-resources-menu"]' );
 
-			$post_urls = array();
-			foreach ( $anchors as $anchor ) {
-				$post_urls[ $anchor->getAttribute( 'href' ) ] = $anchor->nodeValue; // phpcs:ignore
+			// phpcs:disable
+
+			$cat_pagepage_urls = array();
+			if ( ! is_null( $elements ) ) {
+				foreach ( $elements as $element ) {
+					foreach ( $element->childNodes as $childNode ) {
+						if ( $childNode->nodeName === 'li' ) {
+							foreach ( $childNode->childNodes as $grandChildNode ) {
+								if ( $grandChildNode->nodeName === 'a' ) {
+									$href                   = $grandChildNode->getAttribute( 'href' );
+									$text                   = $grandChildNode->nodeValue;
+									$cat_page_urls[ $text ] = $href;
+								}
+							}
+						}
+					}
+				}
 			}
 
-			return $post_urls;
+			// phpcs:enable
+
+			$exclude_item = array(
+				'Featured'       => '',
+				'More Resources' => '',
+			);
+
+			return array_diff_key( $cat_page_urls, $exclude_item );
 		}
 	}
 
 	/**
-	 * Migrate individual post.
+	 * Method to migrate the documents posts.
 	 *
-	 * @param string $post_url Post URL.
+	 * @param string $url URL.
 	 *
-	 * @return void
+	 * @return array
 	 */
-	public function migrate_individual_post( string $post_url ): void {
+	public function migrate_documents_posts( string $url ): array {
+
+		$response = wp_remote_get( $url );
+
+		if ( is_wp_error( $response ) ) {
+			WP_CLI::error( 'Failed to fetch the blog posts.' );
+		} else {
+			$body = wp_remote_retrieve_body( $response );
+
+			// Create a new DOMDocument instance.
+			$dom = new DOMDocument();
+
+			// Suppress errors due to malformed HTML.
+			libxml_use_internal_errors( true );
+
+			// Load the HTML into the DOMDocument.
+			$dom->loadHTML( $body );
+
+			// Create a new DOMXPath instance.
+			$xpath = new DOMXPath( $dom );
+
+			// Query the DOM for the div elements with the class "res-list-filter__item".
+			$elements = $xpath->query( '//div[contains(@class, "res-list-filter__grid")]//div[@class="res-list-filter__item"]' );
+
+			$items = array();
+			if ( ! is_null( $elements ) ) {
+				foreach ( $elements as $element ) {
+					$a   = $xpath->query( './/a', $element )->item( 0 );
+					$h3  = $xpath->query( './/h3', $element )->item( 0 );
+					$img = $xpath->query( './/img', $element )->item( 0 );
+
+					if ( $a && $h3 ) {
+
+						$items[] = array(
+							'url'     => $a->getAttribute( 'href' ),
+							'title'   => trim( $h3->nodeValue ),
+							'img'     => $img->getAttribute( 'src' ),
+							'content' => '',
+						);
+					}
+				}
+			}
+
+			return $items;
+		}
+	}
+
+	/**
+	 * Method to migrate single post.
+	 *
+	 * @param string $post_url URL.
+	 *
+	 * @return array
+	 */
+	public function get_post_data( string $post_url ): array {
 
 		// Get the post content.
 		$response = wp_remote_get( $post_url );
@@ -269,7 +312,7 @@ class External_Posts_Migrate extends WP_CLI_Base {
 			}
 
 			// Get the content.
-			$content_div  = $xpath->query( '//div[contains(@class, "wpb_text_column wpb_content_element")]//div[contains(@class, "wpb_wrapper")]' );
+			$content_div  = $xpath->query( '//div[contains(@class, "info-with-form__wrap")]' );
 			$post_content = '';
 
 			if ( $content_div->length > 0 ) {
@@ -291,8 +334,7 @@ class External_Posts_Migrate extends WP_CLI_Base {
 				'featured_img' => $featured_image_url,
 			);
 
-			// Insert or update the post.
-			$this->insert_or_update_post( $post_data );
+			return $post_data;
 		}
 	}
 
@@ -307,16 +349,16 @@ class External_Posts_Migrate extends WP_CLI_Base {
 
 		$title        = sanitize_text_field( $post_arr['title'] );
 		$content      = $this->convert_content_to_blocks( $post_arr['content'] );
-		$featured_img = $post_arr['featured_img'];
+		$featured_img = $post_arr['img'];
 		$categories   = $post_arr['categories'];
 
 		// Prepare post array to insert/update.
 		$post_data = array(
-			'post_type'    => static::POST_TYPE,
+			'post_type'    => $this->post_type,
 			'post_title'   => $title,
 			'post_content' => $content,
-			'post_date'    => $post_arr['date'],
 			'post_status'  => 'publish',
+			// 'post_date'    => $post_arr['date'],
 		);
 
 		// Get image URLs from the content.
@@ -377,7 +419,7 @@ class External_Posts_Migrate extends WP_CLI_Base {
 				}
 
 				// Assign categories.
-				$this->maybe_add_terms( $new_post_id, $terms, 'category' );
+				$this->maybe_add_terms( $new_post_id, $terms, static::TAXONOMY );
 			}
 		}
 	}
@@ -489,6 +531,102 @@ class External_Posts_Migrate extends WP_CLI_Base {
 	}
 
 	/**
+	 * Method to get the attachment ID by image name.
+	 *
+	 * @param string $file_name Attachment file name.
+	 *
+	 * @return int|false
+	 */
+	public function get_attachment_id_by_name( string $file_name ): int|false {
+
+		$args = array(
+			'post_type'        => 'attachment',
+			'posts_per_page'   => 1,
+			'meta_query'       => array( // phpcs:ignore
+				array(
+					'key'     => '_wp_attached_file',
+					'value'   => $file_name,
+					'compare' => 'LIKE',
+				),
+			),
+			'suppress_filters' => false,
+		);
+
+		$attachments = get_posts( $args );
+
+		return ! empty( $attachments ) ? $attachments[0]->ID : false;
+	}
+
+	/**
+	 * Method to check if post is exist in the sub site.
+	 *
+	 * @param string $slug    Post Slug.
+	 *
+	 * @return int|false Returns Post ID if post exist else FALSE.
+	 */
+	public function get_post_if_exist( string $slug ): int|false {
+
+		$query = new WP_Query(
+			array(
+				'post_type'              => $this->post_type,
+				'name'                   => $slug,
+				'post_status'            => 'publish',
+				'posts_per_page'         => 1,
+				'fields'                 => 'ids',
+				'no_found_rows'          => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+			)
+		);
+
+		return $query->have_posts() ? $query->posts[0] : false;
+	}
+
+	/**
+	 * Method to add terms if they do not exist already.
+	 *
+	 * @param int    $post_id  Post ID to assign terms.
+	 * @param array  $terms    Array of term.
+	 * @param string $taxonomy Taxonomy to assign terms.
+	 *
+	 * @return void
+	 */
+	public function maybe_add_terms( int $post_id, array $terms, string $taxonomy ): void {
+
+		$new_term = array();
+
+		foreach ( $terms as $term_slug => $term_name ) {
+
+			$term_data = term_exists( (string) $term_slug, $taxonomy, 0 );
+
+			// If the term does not exist then insert it.
+			if ( empty( $term_data ) ) {
+
+				// The term doesn't exist, lets create it.
+				$term_added = wp_insert_term(
+					$term_name,
+					$taxonomy
+				);
+
+				if ( is_array( $term_added ) && isset( $term_added['term_id'] ) ) {
+					$new_term[] = $term_added['term_id'];
+				}
+			} elseif ( is_array( $term_data ) && isset( $term_data['term_id'] ) ) {
+				$new_term[] = $term_data['term_id'];
+			}
+		}
+
+		$terms = $this->get_term_slug( $new_term, $taxonomy );
+
+		// Set terms in a post.
+		wp_set_post_terms(
+			$post_id,
+			$terms,
+			$taxonomy,
+		);
+	}
+
+	/**
 	 * Method to convert the content to Gutenberg blocks.
 	 *
 	 * @param string $content Post Content.
@@ -551,96 +689,43 @@ class External_Posts_Migrate extends WP_CLI_Base {
 	}
 
 	/**
-	 * Method to get the attachment ID by image name.
+	 * Method to get term slug from term ID.
 	 *
-	 * @param string $file_name Attachment file name.
+	 * @param int|array $term_id Term ID.
+	 * @param string    $taxonomy Taxonomy.
 	 *
-	 * @return int|false
+	 * @return string|array
 	 */
-	public function get_attachment_id_by_name( string $file_name ): int|false {
+	public function get_term_slug( int|array $term_id, string $taxonomy ): string|array {
 
-		$args = array(
-			'post_type'        => 'attachment',
-			'posts_per_page'   => 1,
-			'meta_query'       => array( // phpcs:ignore
-				array(
-					'key'     => '_wp_attached_file',
-					'value'   => $file_name,
-					'compare' => '=',
-				),
-			),
-			'suppress_filters' => false,
-		);
+		// If $term_id is integer.
+		if ( is_int( $term_id ) ) {
+			$term = get_term_by(
+				'term_id',
+				$term_id,
+				$taxonomy
+			);
 
-		$attachments = get_posts( $args );
-
-		return ! empty( $attachments ) ? $attachments[0]->ID : false;
-	}
-
-	/**
-	 * Method to check if post is exist in the sub site.
-	 *
-	 * @param string $slug    Post Slug.
-	 *
-	 * @return int|false Returns Post ID if post exist else FALSE.
-	 */
-	public function get_post_if_exist( string $slug ): int|false {
-
-		$query = new WP_Query(
-			array(
-				'post_type'              => static::POST_TYPE,
-				'name'                   => $slug,
-				'post_status'            => 'publish',
-				'posts_per_page'         => 1,
-				'fields'                 => 'ids',
-				'no_found_rows'          => true,
-				'update_post_meta_cache' => false,
-				'update_post_term_cache' => false,
-			)
-		);
-
-		return $query->have_posts() ? $query->posts[0] : false;
-	}
-
-	/**
-	 * Method to add terms if they do not exist already.
-	 *
-	 * @param int    $post_id  Post ID to assign terms.
-	 * @param array  $terms    Array of term.
-	 * @param string $taxonomy Taxonomy to assign terms.
-	 *
-	 * @return void
-	 */
-	public function maybe_add_terms( int $post_id, array $terms, string $taxonomy ): void {
-
-		$new_term = array();
-
-		foreach ( $terms as $term_slug => $term_name ) {
-
-			$term_data = term_exists( (string) $term_slug, $taxonomy, 0 );
-
-			// If the term does not exist then insert it.
-			if ( empty( $term_data ) ) {
-
-				// The term doesn't exist, lets create it.
-				$term_added = wp_insert_term(
-					$term_name,
-					$taxonomy
-				);
-
-				if ( is_array( $term_added ) && isset( $term_added['term_id'] ) ) {
-					$new_term[] = $term_added['term_id'];
-				}
-			} elseif ( is_array( $term_data ) && isset( $term_data['term_id'] ) ) {
-				$new_term[] = $term_data['term_id'];
-			}
+			return $term ? $term->slug : '';
 		}
 
-		// Set terms in a post.
-		wp_set_post_terms(
-			$post_id,
-			$new_term,
-			$taxonomy,
-		);
+		// If $term_id is array.
+		if ( is_array( $term_id ) ) {
+			$slugs = array();
+			foreach ( $term_id as $id ) {
+				$term = get_term_by(
+					'term_id',
+					$id,
+					$taxonomy
+				);
+				if ( $term ) {
+					$slugs[] = $term->slug;
+				}
+			}
+			return $slugs;
+		}
+
+		// Return an empty string if $term_id is neither an interger nor an array.
+		return '';
 	}
 } // End Class.
