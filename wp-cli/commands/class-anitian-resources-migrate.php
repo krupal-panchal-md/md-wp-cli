@@ -188,12 +188,12 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			if ( 'Awards' === $cat_name ) {
 				$awards_posts = $this->get_all_awards_posts( $cat_url );
 
-				foreach ( $press_news_posts as $post_data ) {
+				foreach ( $awards_posts as $post_data ) {
 
 					$post_data['categories'] = array( $cat_name );
 
 					if ( ! $this->is_dry_run() ) {
-						/* $this->insert_or_update_post( $post_data ); */
+						$this->insert_or_update_post( $post_data );
 
 						WP_CLI::log(
 							sprintf(
@@ -347,13 +347,10 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		$awards_arr = array();
 
-		$awards       = $this->get_awards_by_cat( $html );
-		$awards_arr[] = $awards;
+		$awards      = $this->get_awards_by_cat( $html );
+		$more_awards = $this->get_awards_more_posts( 1, 'ant_award_listing_filter_callback' );
 
-		$more_awards  = $this->get_awards_more_posts( 1, 'ant_award_listing_filter_callback' );
-		$awards_arr[] = $more_awards;
-
-		return $awards;
+		return array_merge( $awards, $more_awards );
 	}
 
 	/**
@@ -383,23 +380,22 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			$awards_el  = $award_xpath->query( "//*[contains(@class, 'awards-listing__post')]" );
 			$awards_div = $award_dom->saveHTML( $awards_el->item( 0 ) );
 
-			$post = $this->prepare_post_array_for_awards( $awards_div, 'awards-listing__post' );
-
-			$awards[ $year ] = $post;
+			$award_posts = $this->prepare_post_array_for_awards( $awards_div, 'awards-listing__post', array( $year ) );
 		}
 
-		return $awards;
+		return $award_posts;
 	}
 
 	/**
 	 * Method to prepare post array from HTML.
 	 *
-	 * @param string $html HTML.
+	 * @param string $html       HTML.
 	 * @param string $class_name Div class Name.
+	 * @param array  $terms      Year.
 	 *
 	 * @return array
 	 */
-	public function prepare_post_array_for_awards( string $html, string $class_name ) {
+	public function prepare_post_array_for_awards( string $html, string $class_name, array $terms ): array {
 
 		// Create a new DOMDocument instance.
 		$dom = new DOMDocument();
@@ -428,6 +424,7 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 					'img'     => $img->getAttribute( 'src' ),
 					'content' => '',
 					'date'    => '',
+					'terms'   => $terms,
 				);
 			}
 		}
