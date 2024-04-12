@@ -101,14 +101,28 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		foreach ( $cat_page_urls as $cat_name => $cat_url ) {
 
+			WP_CLI::log( '---------------------------------' );
+			WP_CLI::log(
+				sprintf(
+					'Migrating %s Posts...',
+					$cat_name
+				)
+			);
+			WP_CLI::log( '---------------------------------' );
+
 			$same_layout_item = array(
-				'Documents',
-				'Case Studies',
-				'On-Demand Webinars',
+				'documents'         => 'Documents',
+				'case-study'        => 'Case Studies',
+				'on-demand-webinar' => 'On-Demand Webinars',
 			);
 
-			if ( in_array( $cat_name, $same_layout_item, true ) ) {
-				$doc_case_webinar_posts = $this->migrate_documents_posts( $cat_url );
+			// Documents, Case Studies and On-Demand Webinars Posts.
+			if ( in_array( $cat_name, array_values( $same_layout_item ), true ) ) {
+
+				$item_name = array_flip( $same_layout_item );
+				$item_name = $item_name[ $cat_name ];
+
+				$doc_case_webinar_posts = $this->get_doc_case_webinar_posts( $item_name );
 
 				foreach ( $doc_case_webinar_posts as $post_data ) {
 
@@ -116,7 +130,89 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 					if ( ! $this->is_dry_run() ) {
 						$this->insert_or_update_post( $post_data );
+
+						WP_CLI::log(
+							sprintf(
+								'%d) %s',
+								$sr_num,
+								$post_data['title']
+							)
+						);
+					} else {
+						WP_CLI::log(
+							sprintf(
+								'%d) %s',
+								$sr_num,
+								$post_data['title']
+							)
+						);
 					}
+
+					++$sr_num;
+				}
+			}
+
+			// Press & News Posts.
+			if ( 'Press & News' === $cat_name ) {
+				$press_news_posts = $this->get_all_press_news_posts( 'press-release' );
+
+				foreach ( $press_news_posts as $post_data ) {
+
+					$post_data['categories'] = array( $cat_name );
+
+					if ( ! $this->is_dry_run() ) {
+						$this->insert_or_update_post( $post_data );
+
+						WP_CLI::log(
+							sprintf(
+								'%d) %s',
+								$sr_num,
+								$post_data['title']
+							)
+						);
+					} else {
+						WP_CLI::log(
+							sprintf(
+								'%d) %s',
+								$sr_num,
+								$post_data['title']
+							)
+						);
+					}
+
+					++$sr_num;
+				}
+			}
+
+			// Awards.
+			if ( 'Awards' === $cat_name ) {
+				$awards_posts = $this->get_all_awards_posts( $cat_url );
+
+				foreach ( $press_news_posts as $post_data ) {
+
+					$post_data['categories'] = array( $cat_name );
+
+					if ( ! $this->is_dry_run() ) {
+						/* $this->insert_or_update_post( $post_data ); */
+
+						WP_CLI::log(
+							sprintf(
+								'%d) %s',
+								$sr_num,
+								$post_data['title']
+							)
+						);
+					} else {
+						WP_CLI::log(
+							sprintf(
+								'%d) %s',
+								$sr_num,
+								$post_data['title']
+							)
+						);
+					}
+
+					++$sr_num;
 				}
 			}
 		}
@@ -184,13 +280,310 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 	}
 
 	/**
-	 * Method to migrate the documents posts.
+	 * Method to get the Documents, Case Studies and On-Demand Webinars Posts.
+	 * This method will not work for other types of posts.
+	 *
+	 * @param string $category Category.
+	 *
+	 * @return array
+	 */
+	public function get_doc_case_webinar_posts( string $category ): array {
+
+		$page      = 1;
+		$post_data = array();
+		do {
+			$posts = $this->if_doc_case_webinar_news_posts( $page, $category, 'resources_listing_filter', 'res-list-filter__item' );
+			if ( is_array( $posts ) && count( $posts ) > 0 ) {
+				$post_data = array_merge( $post_data, $posts );
+			} else {
+				break;
+			}
+			++$page;
+		} while ( false !== $posts );
+
+		return $post_data;
+	}
+
+	/**
+	 * Method to get the Documents, Case Studies and On-Demand Webinars Posts.
+	 *
+	 * @param string $category Category.
+	 *
+	 * @return array
+	 */
+	public function get_all_press_news_posts( string $category ): array {
+
+		$page      = 1;
+		$post_data = array();
+		do {
+			$posts = $this->if_doc_case_webinar_news_posts( $page, $category, 'posts_listing_filter_v2', 'post-list-filter__item' );
+			if ( is_array( $posts ) && count( $posts ) > 0 ) {
+				$post_data = array_merge( $post_data, $posts );
+			} else {
+				break;
+			}
+			++$page;
+		} while ( false !== $posts );
+
+		return $post_data;
+	}
+
+	/**
+	 * Method to get Awards Posts.
+	 *
+	 * @param string $post_url Post URL.
+	 *
+	 * @return array
+	 */
+	public function get_all_awards_posts( string $post_url ): array {
+
+		$response = wp_remote_get( $post_url );
+
+		if ( is_wp_error( $response ) ) {
+			return array();
+		}
+
+		$html = wp_remote_retrieve_body( $response );
+
+		$awards_arr = array();
+
+		$awards       = $this->get_awards_by_cat( $html );
+		$awards_arr[] = $awards;
+
+		$more_awards  = $this->get_awards_more_posts( 1, 'ant_award_listing_filter_callback' );
+		$awards_arr[] = $more_awards;
+
+		return $awards;
+	}
+
+	/**
+	 * Method to get Awards Posts.
+	 *
+	 * @param string $html HTML.
+	 *
+	 * @return array
+	 */
+	public function get_awards_by_cat( string $html ): array {
+
+		$dom = new DOMDocument();
+		$dom->loadHTML( $html );
+
+		$xpath = new DOMXPath( $dom );
+
+		$elements = $xpath->query( "//*[contains(@class, 'awards-listing__awards-list-item')]" );
+
+		$awards = array();
+		foreach ( $elements as $element ) {
+			$award_dom = new DOMDocument();
+			$award_dom->loadHTML( $dom->saveHTML( $element ) );
+
+			$award_xpath = new DOMXPath( $award_dom );
+
+			$year       = $award_xpath->query( "//*[contains(@class, 'awards-listing__year')]" )->item( 0 )->nodeValue;
+			$awards_el  = $award_xpath->query( "//*[contains(@class, 'awards-listing__post')]" );
+			$awards_div = $award_dom->saveHTML( $awards_el->item( 0 ) );
+
+			$post = $this->prepare_post_array_for_awards( $awards_div, 'awards-listing__post' );
+
+			$awards[ $year ] = $post;
+		}
+
+		return $awards;
+	}
+
+	/**
+	 * Method to prepare post array from HTML.
+	 *
+	 * @param string $html HTML.
+	 * @param string $class_name Div class Name.
+	 *
+	 * @return array
+	 */
+	public function prepare_post_array_for_awards( string $html, string $class_name ) {
+
+		// Create a new DOMDocument instance.
+		$dom = new DOMDocument();
+
+		// Suppress errors due to malformed HTML.
+		libxml_use_internal_errors( true );
+
+		// Load the HTML into the DOMDocument.
+		$dom->loadHTML( $html );
+
+		// Create a new DOMXPath instance.
+		$xpath = new DOMXPath( $dom );
+
+		// Query the DOM for the div elements with the class name.
+		$div      = '//div[@class="' . $class_name . '"]';
+		$elements = $xpath->query( $div );
+
+		$items = array();
+		if ( ! is_null( $elements ) ) {
+			foreach ( $elements as $element ) {
+				$title = $xpath->query( './/div[contains(@class, "awards-listing__post-title")]', $element )->item( 0 );
+				$img   = $xpath->query( './/img', $element )->item( 0 );
+
+				$items[] = array(
+					'title'   => trim( $title->nodeValue ), // phpcs:ignore
+					'img'     => $img->getAttribute( 'src' ),
+					'content' => '',
+					'date'    => '',
+				);
+			}
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Method to get if the Documents, Case Studie, Press & News and On-Demand Webinars Posts found.
+	 *
+	 * @param int    $page       Page Number.
+	 * @param string $action     AJAX Action.
+	 *
+	 * @return bool|array
+	 */
+	public function get_awards_more_posts( int $page, string $action ): bool|array {
+
+		$url  = 'https://www.anitian.com/wp-admin/admin-ajax.php';
+		$args = array(
+			'method' => 'GET',
+			'body'   => array(
+				'action' => $action,
+				'page'   => $page,
+			),
+		);
+
+		$response = wp_remote_request( $url, $args );
+
+		$response_code = wp_remote_retrieve_response_code( $response );
+
+		if ( 200 !== $response_code ) {
+			return false;
+		}
+
+		if ( is_wp_error( $response ) ) {
+			$error_message = $response->get_error_message();
+			WP_CLI::error( "Something went wrong: $error_message" );
+		} else {
+			$html = wp_remote_retrieve_body( $response );
+		}
+
+		return $this->get_awards_by_cat( $html );
+	}
+
+	/**
+	 * Method to get if the Documents, Case Studie, Press & News and On-Demand Webinars Posts found.
+	 *
+	 * @param int    $page       Page Number.
+	 * @param string $category   Category.
+	 * @param string $action     AJAX Action.
+	 * @param string $class_name Div class Name.
+	 *
+	 * @return bool|array
+	 */
+	public function if_doc_case_webinar_news_posts( int $page, string $category, string $action, string $class_name ): bool|array {
+
+		$url  = 'https://www.anitian.com/wp-admin/admin-ajax.php';
+		$args = array(
+			'method' => 'GET',
+			'body'   => array(
+				'action'              => $action,
+				'pageNumber'          => $page,
+				'selected_categories' => $category,
+				'show_title'          => 'true',
+				'show_pub_date'       => 'false',
+				'show_desc'           => 'true',
+				'show_tag'            => 'true',
+				'post_per_page'       => 10,
+				'data_append'         => 'false',
+			),
+		);
+
+		$response = wp_remote_request( $url, $args );
+
+		$response_code = wp_remote_retrieve_response_code( $response );
+
+		if ( 200 !== $response_code ) {
+			return false;
+		}
+
+		if ( is_wp_error( $response ) ) {
+			$error_message = $response->get_error_message();
+			WP_CLI::error( "Something went wrong: $error_message" );
+		} else {
+			$body = wp_remote_retrieve_body( $response );
+
+			$json_response = json_decode( $body, true );
+			$html          = $json_response['ajax_response'];
+		}
+
+		return $this->prepare_post_array_from_html( $html, $class_name, $category );
+	}
+
+	/**
+	 * Method to prepare post array from HTML.
+	 *
+	 * @param string $html       HTML.
+	 * @param string $class_name Div class Name.
+	 * @param string $category   Category.
+	 *
+	 * @return array
+	 */
+	public function prepare_post_array_from_html( string $html, string $class_name, string $category ) {
+
+		// Create a new DOMDocument instance.
+		$dom = new DOMDocument();
+
+		// Suppress errors due to malformed HTML.
+		libxml_use_internal_errors( true );
+
+		// Load the HTML into the DOMDocument.
+		$dom->loadHTML( $html );
+
+		// Create a new DOMXPath instance.
+		$xpath = new DOMXPath( $dom );
+
+		// Query the DOM for the div elements with the class name.
+		$div      = '//div[@class="' . $class_name . '"]';
+		$elements = $xpath->query( $div );
+
+		$items = array();
+		if ( ! is_null( $elements ) ) {
+			foreach ( $elements as $element ) {
+				$a   = $xpath->query( './/a', $element )->item( 0 );
+				$h3  = $xpath->query( './/h3', $element )->item( 0 );
+				$img = $xpath->query( './/img', $element )->item( 0 );
+
+				if ( $a && $h3 ) {
+
+					if ( 'press-release' === $category ) {
+						$news_data = $this->get_press_news_post_data( $a->getAttribute( 'href' ) );
+						$items[]   = $news_data;
+					} else {
+						$items[] = array(
+							'url'     => $a->getAttribute( 'href' ),
+							'title'   => trim( $h3->nodeValue ), // phpcs:ignore
+							'img'     => $img->getAttribute( 'src' ),
+							'content' => '',
+							'date'    => '',
+						);
+					}
+				}
+			}
+		}
+
+		return $items;
+	}
+
+	/**
+	 * Method to get Press & News Posts.
 	 *
 	 * @param string $url URL.
 	 *
 	 * @return array
 	 */
-	public function migrate_documents_posts( string $url ): array {
+	public function get_press_news_posts( string $url ): array {
 
 		$response = wp_remote_get( $url );
 
@@ -211,27 +604,16 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			// Create a new DOMXPath instance.
 			$xpath = new DOMXPath( $dom );
 
-			// Query the DOM for the div elements with the class "res-list-filter__item".
-			$elements = $xpath->query( '//div[contains(@class, "res-list-filter__grid")]//div[@class="res-list-filter__item"]' );
+			$featured_image_div  = $xpath->query( '//div[contains(@class, "anitian-post-article")]//div[contains(@class, "post-thumbnail")]' );
+			$featured_image_html = $dom->saveHTML( $featured_image_div->item( 0 ) );
 
-			$items = array();
-			if ( ! is_null( $elements ) ) {
-				foreach ( $elements as $element ) {
-					$a   = $xpath->query( './/a', $element )->item( 0 );
-					$h3  = $xpath->query( './/h3', $element )->item( 0 );
-					$img = $xpath->query( './/img', $element )->item( 0 );
-
-					if ( $a && $h3 ) {
-
-						$items[] = array(
-							'url'     => $a->getAttribute( 'href' ),
-							'title'   => trim( $h3->nodeValue ),
-							'img'     => $img->getAttribute( 'src' ),
-							'content' => '',
-						);
-					}
-				}
-			}
+			$items[] = array(
+				'url'     => $a->getAttribute( 'href' ),
+				'title'   => trim( $title->nodeValue ), // phpcs:ignore
+				'img'     => $featured_image_html,
+				'content' => '',
+				'date'    => trim( $date->nodeValue ), // phpcs:ignore
+			);
 
 			return $items;
 		}
@@ -244,7 +626,7 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 	 *
 	 * @return array
 	 */
-	public function get_post_data( string $post_url ): array {
+	public function get_press_news_post_data( string $post_url ): array {
 
 		// Get the post content.
 		$response = wp_remote_get( $post_url );
@@ -267,16 +649,15 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			$xpath = new DOMXPath( $dom );
 
 			// Get the featured image.
-			$featured_image_div  = $xpath->query( '//div[contains(@class, "page-header-bg-image-wrap")]//div[contains(@class, "page-header-bg-image")]' );
-			$featured_image_html = $dom->saveHTML( $featured_image_div->item( 0 ) );
-
-			// Match the URL from the HTML.
-			preg_match( '/url\((.*?)\)/', $featured_image_html, $matches );
-
-			$featured_image_url = $matches[1] ?? '';
+			$featured_image_div = $xpath->query( '//article[contains(@class, "anitian-post-article")]//img[contains(@class, "attachment-post-thumbnail")]' );
+			$featured_image_url = '';
+			if ( $featured_image_div->length > 0 ) {
+				$img                = $featured_image_div->item( 0 );
+				$featured_image_url = $img->getAttribute( 'src' );
+			}
 
 			// Get Post Title.
-			$post_title_div = $xpath->query( '//div[contains(@class, "featured-media-under-header__content")]//h1[contains(@class, "entry-title")]' );
+			$post_title_div = $xpath->query( '//header[contains(@class, "entry-header")]//h1[contains(@class, "entry-title")]' );
 			$post_title     = '';
 
 			if ( $post_title_div->length > 0 ) {
@@ -284,21 +665,11 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			}
 
 			// Get the date.
-			$published_date_span = $xpath->query( '//span[contains(@class, "meta-date date published")]' );
-			$updated_date_span   = $xpath->query( '//span[contains(@class, "meta-date date updated")]' );
+			$published_date_span = $xpath->query( '//time[contains(@class, "entry-date")]' );
 			$post_date           = '';
 
-			if (
-				$published_date_span->length > 0
-				|| $updated_date_span->length > 0
-			) {
-				$published_date = ! empty( $published_date_span->item( 0 ) ) ? $published_date_span->item( 0 )->nodeValue : '';
-
-				if ( ! empty( $published_date ) ) {
-					$post_date = $published_date;
-				} else {
-					$post_date = $updated_date_span->item( 0 )->nodeValue;
-				}
+			if ( $published_date_span->length > 0 ) {
+				$post_date = $published_date_span->item( 0 )->nodeValue;
 			}
 
 			// Get the categories.
@@ -312,7 +683,7 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			}
 
 			// Get the content.
-			$content_div  = $xpath->query( '//div[contains(@class, "info-with-form__wrap")]' );
+			$content_div  = $xpath->query( '//div[contains(@class, "post-entry-content")]' );
 			$post_content = '';
 
 			if ( $content_div->length > 0 ) {
@@ -327,11 +698,10 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			$post_date   = date_format( $date_object, 'Y-m-d H:i:s' );
 
 			$post_data = array(
-				'title'        => $post_title,
-				'content'      => wp_kses_post( $post_content ),
-				'date'         => $post_date,
-				'categories'   => $categories,
-				'featured_img' => $featured_image_url,
+				'title'   => $post_title,
+				'content' => wp_kses_post( $post_content ),
+				'date'    => $post_date,
+				'img'     => $featured_image_url,
 			);
 
 			return $post_data;
@@ -358,7 +728,7 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			'post_title'   => $title,
 			'post_content' => $content,
 			'post_status'  => 'publish',
-			// 'post_date'    => $post_arr['date'],
+			'post_date'    => $post_arr['date'],
 		);
 
 		// Get image URLs from the content.
@@ -455,6 +825,10 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 	 * @throws ErrorException Error message.
 	 */
 	public function upload_image_to_media_library( string $image_url ): int|false {
+
+		$parsed_url = wp_parse_url( $image_url );
+
+		$image_url = $parsed_url['scheme'] . '://' . $parsed_url['host'] . $parsed_url['path'];
 
 		// Check if attachment is alraeady exist in the site.
 		$existing_attachment_id = $this->get_attachment_id_by_name( basename( $image_url ) );
