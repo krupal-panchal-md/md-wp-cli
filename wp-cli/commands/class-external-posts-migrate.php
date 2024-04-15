@@ -132,6 +132,7 @@ class External_Posts_Migrate extends WP_CLI_Base {
 					$page,
 				)
 			);
+			sleep( 2 );
 			WP_CLI::log( 'Sleep for 2 seconds...' );
 			WP_CLI::log( '' );
 		}

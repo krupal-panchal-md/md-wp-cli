@@ -31,6 +31,13 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 	public const TAXONOMY = 'resource_categories';
 
 	/**
+	 * Batch size.
+	 *
+	 * @var int
+	 */
+	public const BATCH_SIZE = 20;
+
+	/**
 	 * Default post type.
 	 *
 	 * @var string
@@ -97,7 +104,6 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		$sr_num        = 1;
 		$cat_page_urls = $this->get_category_page_urls( $site_url );
-		$page_count    = count( $cat_page_urls );
 
 		foreach ( $cat_page_urls as $cat_name => $cat_url ) {
 
@@ -148,6 +154,8 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 						);
 					}
 
+					$this->sleep_in_batches( $sr_num );
+
 					++$sr_num;
 				}
 			}
@@ -179,6 +187,8 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 							)
 						);
 					}
+
+					$this->sleep_in_batches( $sr_num );
 
 					++$sr_num;
 				}
@@ -212,9 +222,28 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 						);
 					}
 
+					$this->sleep_in_batches( $sr_num );
+
 					++$sr_num;
 				}
 			}
+		}
+
+		// Final success message.
+		if ( ! $this->is_dry_run() ) {
+			$this->notify_on_done(
+				sprintf(
+					'Total %d posts migrated.',
+					$sr_num - 1
+				)
+			);
+		} else {
+			$this->notify_on_done(
+				sprintf(
+					'Dry run ended - Total %d posts will be migrated.',
+					$sr_num - 1
+				)
+			);
 		}
 	}
 
@@ -251,7 +280,7 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 			// phpcs:disable
 
-			$cat_pagepage_urls = array();
+			$cat_page_urls = array();
 			if ( ! is_null( $elements ) ) {
 				foreach ( $elements as $element ) {
 					foreach ( $element->childNodes as $childNode ) {
@@ -345,8 +374,6 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		$html = wp_remote_retrieve_body( $response );
 
-		$awards_arr = array();
-
 		$awards      = $this->get_awards_by_cat( $html );
 		$more_awards = $this->get_awards_more_posts( 1, 'ant_award_listing_filter_callback' );
 
@@ -369,7 +396,6 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		$elements = $xpath->query( "//*[contains(@class, 'awards-listing__awards-list-item')]" );
 
-		$awards = array();
 		foreach ( $elements as $element ) {
 			$award_dom = new DOMDocument();
 			$award_dom->loadHTML( $dom->saveHTML( $element ) );
@@ -419,8 +445,15 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 				$title = $xpath->query( './/div[contains(@class, "awards-listing__post-title")]', $element )->item( 0 );
 				$img   = $xpath->query( './/img', $element )->item( 0 );
 
+				$title = $title->nodeValue; // phpcs:ignore
+
+				// Check if title contains the problematic characters.
+				if ( strpos( $title, 'Ã¢ÂÂ' ) !== false || strpos( $title, 'â' ) !== false ) {
+					$title = mb_convert_encoding( mb_convert_encoding( $title, 'ISO-8859-1', 'UTF-8' ), 'ISO-8859-1', 'UTF-8' );
+				}
+
 				$items[] = array(
-					'title'   => trim( $title->nodeValue ), // phpcs:ignore
+					'title'   => trim( $title ), // phpcs:ignore
 					'img'     => $img->getAttribute( 'src' ),
 					'content' => '',
 					'date'    => '',
@@ -558,11 +591,25 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 						$news_data = $this->get_press_news_post_data( $a->getAttribute( 'href' ) );
 						$items[]   = $news_data;
 					} else {
+						$title = trim( $h3->nodeValue ); // phpcs:ignore
+
+						// Check if title contains the problematic characters.
+						if ( strpos( $title, 'Ã¢ÂÂ' ) !== false || strpos( $title, 'â' ) !== false ) {
+							$title = mb_convert_encoding( mb_convert_encoding( $title, 'ISO-8859-1', 'UTF-8' ), 'ISO-8859-1', 'UTF-8' );
+						}
+
+						$content = match ( $category ) {
+							'documents'  => $this->get_content_for_posts( $a->getAttribute( 'href' ), 'info-with-form__content-wrap' ),
+							'on-demand-webinar'  => $this->get_content_for_posts( $a->getAttribute( 'href' ), 'info-with-form__content-wrap' ),
+							'case-study' => $this->get_content_for_posts( $a->getAttribute( 'href' ), 'pdf-informations-section__left' ),
+							default => ''
+						};
+
 						$items[] = array(
 							'url'     => $a->getAttribute( 'href' ),
-							'title'   => trim( $h3->nodeValue ), // phpcs:ignore
+							'title'   => $title,
 							'img'     => $img->getAttribute( 'src' ),
-							'content' => '',
+							'content' => $content,
 							'date'    => '',
 						);
 					}
@@ -604,8 +651,9 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			$featured_image_div  = $xpath->query( '//div[contains(@class, "anitian-post-article")]//div[contains(@class, "post-thumbnail")]' );
 			$featured_image_html = $dom->saveHTML( $featured_image_div->item( 0 ) );
 
+			$items   = array();
 			$items[] = array(
-				'url'     => $a->getAttribute( 'href' ),
+				'url'     => $url,
 				'title'   => trim( $title->nodeValue ), // phpcs:ignore
 				'img'     => $featured_image_html,
 				'content' => '',
@@ -706,6 +754,51 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 	}
 
 	/**
+	 * Method to get the content for the posts.
+	 *
+	 * @param string $post_url   Post URL.
+	 * @param string $class_name Class Name.
+	 *
+	 * @return string Post Content.
+	 */
+	public function get_content_for_posts( string $post_url, string $class_name ): string {
+
+		// Get the post content.
+		$response = wp_remote_get( $post_url );
+
+		if ( is_wp_error( $response ) ) {
+			WP_CLI::error( 'Failed to fetch the blog posts.' );
+		} else {
+			$body = wp_remote_retrieve_body( $response );
+
+			// Create a new DOMDocument instance.
+			$dom = new DOMDocument();
+
+			// Suppress errors due to malformed HTML.
+			libxml_use_internal_errors( true );
+
+			// Load the HTML into the DOMDocument.
+			$dom->loadHTML( $body );
+
+			// Create a new DOMXPath instance.
+			$xpath = new DOMXPath( $dom );
+
+			// Get the content.
+			$content_div  = $xpath->query( '//div[contains(@class, "' . $class_name . '")]' );
+			$post_content = '';
+
+			if ( $content_div->length > 0 ) {
+				$div = $content_div->item( 0 );
+				foreach ( $div->childNodes as $child ) { // phpcs:ignore
+					$post_content .= $dom->saveHTML( $child );
+				}
+			}
+		}
+
+		return $post_content;
+	}
+
+	/**
 	 * Method to insert or update post.
 	 *
 	 * @param array $post_arr Post Data.
@@ -718,6 +811,11 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 		$content      = $this->convert_content_to_blocks( $post_arr['content'] );
 		$featured_img = $post_arr['img'];
 		$categories   = $post_arr['categories'];
+
+		// Check if title contains the problematic characters.
+		if ( strpos( $title, 'Ã¢ÂÂ' ) !== false || strpos( $title, 'â' ) !== false ) {
+			$title = mb_convert_encoding( mb_convert_encoding( $title, 'ISO-8859-1', 'UTF-8' ), 'ISO-8859-1', 'UTF-8' );
+		}
 
 		// Prepare post array to insert/update.
 		$post_data = array(
@@ -839,11 +937,11 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		if ( false === $image_content ) {
 
-			throw new ErrorException(
+			WP_CLI::warning(
 				sprintf(
 					/* translators: %s: Image URL */
 					esc_html__(
-						'Unable to download the image: %s',
+						'Unable to fetch the image for the below post: %s',
 						'twentytwentyone'
 					),
 					esc_url( $image_url )
@@ -1098,5 +1196,21 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 
 		// Return an empty string if $term_id is neither an interger nor an array.
 		return '';
+	}
+
+	/**
+	 * Method to sleep process for some seconds.
+	 *
+	 * @param int $sr_num Sr. Num.
+	 *
+	 * @return void
+	 */
+	public function sleep_in_batches( int $sr_num ): void {
+		if ( 0 === $sr_num % static::BATCH_SIZE ) {
+			WP_CLI::log( '' );
+			WP_CLI::log( 'Sleep for 2 seconds...' );
+			sleep( 2 );
+			WP_CLI::log( '' );
+		}
 	}
 } // End Class.
