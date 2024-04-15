@@ -128,6 +128,8 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 				$item_name = array_flip( $same_layout_item );
 				$item_name = $item_name[ $cat_name ];
 
+				WP_CLI::log( 'Fetching ' . $cat_name . ' Posts...' );
+
 				$doc_case_webinar_posts = $this->get_doc_case_webinar_posts( $item_name );
 
 				foreach ( $doc_case_webinar_posts as $post_data ) {
@@ -342,6 +344,8 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 	 */
 	public function get_all_press_news_posts( string $category ): array {
 
+		WP_CLI::log( 'Fetching Press & News Posts...' );
+
 		$page      = 1;
 		$post_data = array();
 		do {
@@ -353,6 +357,17 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 			}
 			++$page;
 		} while ( false !== $posts );
+
+		$news_page = 1;
+		do {
+			$news_post = $this->if_doc_case_webinar_news_posts( $news_page, 'news', 'resources_listing_filter', 'res-list-filter__item' );
+			if ( is_array( $news_post ) && count( $news_post ) > 0 ) {
+				$post_data = array_merge( $post_data, $news_post );
+			} else {
+				break;
+			}
+			++$news_page;
+		} while ( false !== $news_post );
 
 		return $post_data;
 	}
@@ -448,7 +463,11 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 				$title = $title->nodeValue; // phpcs:ignore
 
 				// Check if title contains the problematic characters.
-				if ( strpos( $title, 'Ã¢ÂÂ' ) !== false || strpos( $title, 'â' ) !== false ) {
+				if (
+					strpos( $title, 'Ã¢ÂÂ' ) !== false
+					|| strpos( $title, 'â' ) !== false
+					|| strpos( $title, 'â' ) !== false
+				) {
 					$title = mb_convert_encoding( mb_convert_encoding( $title, 'ISO-8859-1', 'UTF-8' ), 'ISO-8859-1', 'UTF-8' );
 				}
 
@@ -594,7 +613,11 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 						$title = trim( $h3->nodeValue ); // phpcs:ignore
 
 						// Check if title contains the problematic characters.
-						if ( strpos( $title, 'Ã¢ÂÂ' ) !== false || strpos( $title, 'â' ) !== false ) {
+						if (
+							strpos( $title, 'Ã¢ÂÂ' ) !== false
+							|| strpos( $title, 'â' ) !== false
+							|| strpos( $title, 'â' ) !== false
+						) {
 							$title = mb_convert_encoding( mb_convert_encoding( $title, 'ISO-8859-1', 'UTF-8' ), 'ISO-8859-1', 'UTF-8' );
 						}
 
@@ -813,7 +836,11 @@ class Anitian_Resources_Migrate extends WP_CLI_Base {
 		$categories   = $post_arr['categories'];
 
 		// Check if title contains the problematic characters.
-		if ( strpos( $title, 'Ã¢ÂÂ' ) !== false || strpos( $title, 'â' ) !== false ) {
+		if (
+			strpos( $title, 'Ã¢ÂÂ' ) !== false
+			|| strpos( $title, 'â' ) !== false
+			|| strpos( $title, 'â' ) !== false
+		) {
 			$title = mb_convert_encoding( mb_convert_encoding( $title, 'ISO-8859-1', 'UTF-8' ), 'ISO-8859-1', 'UTF-8' );
 		}
 
