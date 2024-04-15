@@ -140,9 +140,9 @@ class WP_CLI_Base {
 			);
 		} else {
 			$msg_completed = sprintf(
-				'%s - Time taken: %s seconds',
+				'%s - Time taken: %s',
 				$msg,
-				( time() - $this->start_time )
+				$this->get_human_redable_time( $this->start_time, time() )
 			);
 		}
 
@@ -173,6 +173,88 @@ class WP_CLI_Base {
 		WP_CLI::log( '' );
 
 		sleep( $this->sleep );
+	}
+
+	/**
+	 * Method to get time taken for command run.
+	 *
+	 * @param int $from Start time.
+	 * @param int $to End time.
+	 *
+	 * @return string
+	 */
+	protected function get_human_redable_time( int $from, int $to ): string {
+
+		$readable_diff = array();
+		$diff          = (int) ( $to - $from );
+
+		if ( WEEK_IN_SECONDS <= $diff ) {
+
+			$weeks = floor( $diff / WEEK_IN_SECONDS );
+			$diff  = ( $diff % WEEK_IN_SECONDS );
+
+			$readable_diff[] = sprintf(
+				/* translators: Time difference between two dates, in weeks. %s: Number of weeks. */
+				_n( '%s week', '%s weeks', $weeks, 'md-wp-cli' ),
+				$weeks
+			);
+
+		}
+
+		if ( DAY_IN_SECONDS <= $diff ) {
+
+			$days = floor( $diff / DAY_IN_SECONDS );
+			$diff = ( $diff % DAY_IN_SECONDS );
+
+			$readable_diff[] = sprintf(
+				/* translators: Time difference between two dates, in days. %s: Number of days. */
+				_n( '%s day', '%s days', $days, 'md-wp-cli' ),
+				$days
+			);
+
+		}
+
+		if ( HOUR_IN_SECONDS <= $diff ) {
+
+			$hours = floor( $diff / HOUR_IN_SECONDS );
+			$diff  = ( $diff % HOUR_IN_SECONDS );
+
+			$readable_diff[] = sprintf(
+				/* translators: Time difference between two dates, in hours. %s: Number of hours. */
+				_n( '%s hour', '%s hours', $hours, 'md-wp-cli' ),
+				$hours
+			);
+
+		}
+
+		if ( MINUTE_IN_SECONDS <= $diff ) {
+
+			$minutes = floor( $diff / MINUTE_IN_SECONDS );
+			$diff    = ( $diff % MINUTE_IN_SECONDS );
+
+			$readable_diff[] = sprintf(
+				/* translators: Time difference between two dates, in minutes. %s: Number of minutes. */
+				_n( '%s minute', '%s minutes', $minutes, 'md-wp-cli' ),
+				$minutes
+			);
+
+		}
+
+		if ( MINUTE_IN_SECONDS > $diff ) {
+
+			$seconds = $diff;
+
+			$readable_diff[] = sprintf(
+				/* translators: Time difference between two dates, in seconds. %s: Number of seconds. */
+				_n( '%s second', '%s seconds', $seconds, 'md-wp-cli' ),
+				$seconds
+			);
+
+		}
+
+		$readable_diff = implode( ' ', $readable_diff );
+
+		return $readable_diff;
 	}
 } // end class.
 
