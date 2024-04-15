@@ -79,9 +79,8 @@ class Post_Migration extends WP_CLI_Base {
 			$number_posts = (int) $assoc_args['number-posts'];
 		}
 
-		$from_site   = $assoc_args['from-site'];
-		$to_site     = (int) $assoc_args['to-site'];
-		$posts_count = 0;
+		$from_site = $assoc_args['from-site'];
+		$to_site   = (int) $assoc_args['to-site'];
 
 		// Get the post count from the source site.
 		$total_posts = 0;
