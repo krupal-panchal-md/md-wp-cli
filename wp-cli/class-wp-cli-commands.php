@@ -18,7 +18,7 @@ class WP_CLI_Commands {
 	 * @var array
 	 */
 	protected array $commands = array(
-		Test_Complete::class,
+		Test::class,
 		Yoast_Posts_Import::class,
 		Woo_Products_Migrate::class,
 		Post_Migration::class,
