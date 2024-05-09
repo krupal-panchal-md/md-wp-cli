@@ -73,6 +73,8 @@ class Remove_Revisions extends WP_CLI_Base {
 			'numberposts'      => $this->batch_size,
 			'post_status'      => 'any',
 			'suppress_filters' => false,
+			'fields'           => 'ids',
+			'no_found_rows'    => false,
 			'date_query'       => array(
 				array(
 					'column' => 'post_modified_gmt',
@@ -90,22 +92,22 @@ class Remove_Revisions extends WP_CLI_Base {
 			$revisions   = get_posts( $args );
 			$posts_count = count( $revisions );
 
-			foreach ( $revisions as $revision ) {
+			foreach ( $revisions as $revision_id ) {
 				if ( $this->is_dry_run() ) {
 					WP_CLI::log(
 						sprintf(
 							'%d) Revision will be removed: %s',
 							$count,
-							$revision->ID,
+							$revision_id,
 						)
 					);
 				} else {
-					wp_delete_post( $revision->ID, true );
+					wp_delete_post( $revision_id, true );
 					WP_CLI::log(
 						sprintf(
 							'%d) Revision removed: %s',
 							$count,
-							$revision->ID,
+							$revision_id,
 						)
 					);
 				}

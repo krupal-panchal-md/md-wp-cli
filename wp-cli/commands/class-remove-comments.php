@@ -68,14 +68,16 @@ class Remove_Comments extends WP_CLI_Base {
 
 		$page = 1;
 		$args = array(
-			'status'     => 'hold',
-			'number'     => $this->batch_size,
-			'date_query' => array(
+			'status'        => 'hold',
+			'number'        => $this->batch_size,
+			'date_query'    => array(
 				array(
 					'column' => 'comment_date_gmt',
 					'before' => $before_month_ago,
 				),
 			),
+			'no_found_rows' => false,
+			'fields'        => 'ids',
 		);
 
 		$count = 1;
@@ -89,22 +91,22 @@ class Remove_Comments extends WP_CLI_Base {
 			$comments_count = count( $comments );
 
 			// Loop through the comments and delete them.
-			foreach ( $comments as $comment ) {
+			foreach ( $comments as $comment_id ) {
 				if ( $this->is_dry_run() ) {
 					WP_CLI::log(
 						sprintf(
 							'%d) Comment will be removed of ID: %s',
 							$count,
-							$comment->comment_ID,
+							$comment_id,
 						)
 					);
 				} else {
-					wp_delete_comment( $comment->comment_ID, true );
+					wp_delete_comment( $comment_id, true );
 					WP_CLI::log(
 						sprintf(
 							'%d) Comment removed of ID: %s',
 							$count,
-							$comment->comment_ID,
+							$comment_id,
 						)
 					);
 				}
