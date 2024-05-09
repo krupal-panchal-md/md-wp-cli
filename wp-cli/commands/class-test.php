@@ -80,6 +80,10 @@ class Test extends WP_CLI_Base {
 		// Parse the global arguments.
 		$this->parse_global_arguments( $assoc_args );
 
+		if ( ! isset( $assoc_args['slug'] ) ) {
+			WP_CLI::error( 'Please provide slug!' );
+		}
+
 		$this->notify_on_start();
 
 		$slug = $assoc_args['slug'];

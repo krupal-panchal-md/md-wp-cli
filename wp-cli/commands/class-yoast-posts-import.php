@@ -114,7 +114,7 @@ class Yoast_Posts_Import extends WP_CLI_Base {
 		WP_CLI::line( '' );
 
 		// Open the CSV file.
-		$handle = fopen( $file, 'r' );
+		$handle = fopen( $file, 'r' ); // phpcs:ignore
 
 		if ( false !== $handle ) {
 			$row           = 1;
@@ -125,7 +125,7 @@ class Yoast_Posts_Import extends WP_CLI_Base {
 			// Get total row count.
 			$total_rows = count( file( $file ) ) - 1; // Subtract 1 to exclude header row if it exists.
 
-			while ( ( $data = fgetcsv( $handle, 1000, ';' ) ) !== false ) {
+			while ( ( $data = fgetcsv( $handle, 1000, ';' ) ) !== false ) { // phpcs:ignore
 
 				// Skip the first row.
 				if ( 1 === $row ) {
@@ -253,7 +253,7 @@ class Yoast_Posts_Import extends WP_CLI_Base {
 			} // end while.
 		}
 		// Close the CSV file.
-		fclose( $handle );
+		fclose( $handle ); // phpcs:ignore
 
 		// Show table format.
 		if ( 'table' === $log_type ) {

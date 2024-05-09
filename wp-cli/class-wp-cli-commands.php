@@ -24,6 +24,8 @@ class WP_CLI_Commands {
 		Post_Migration::class,
 		External_Posts_Migrate::class,
 		Anitian_Resources_Migrate::class,
+		Remove_Revisions::class,
+		Remove_Comments::class,
 	);
 
 	/**

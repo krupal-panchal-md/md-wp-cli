@@ -117,11 +117,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		$this->from_site = (int) $assoc_args['from-site'];
 		$this->to_site   = (int) $assoc_args['to-site'];
 
-		// Get the post count from the source site.
-		$total_products = wp_count_posts( static::POST_TYPE )->publish;
-
-		$sr_count   = 1;
-		$page_count = 1;
+		$sr_count = 1;
 
 		// Switch to the 'from_site' site.
 		switch_to_blog( $this->from_site );
@@ -148,8 +144,6 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 
 			$product_data = $product->get_data();
 			$slug         = $product_data['slug'];
-
-			$product_type = $product->get_type();
 
 			$product_id = $this->get_product_if_exist( $slug );
 
@@ -381,7 +375,6 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 	 */
 	public function manage_variation( object $product, object $product_obj ): void {
 
-		$attributes_arr = array();
 		$variations_arr = array();
 
 		// Switch to the 'from_site' site.
@@ -795,7 +788,7 @@ class Woo_Products_Migrate extends WP_CLI_Base {
 		$args = array(
 			'post_type'        => 'attachment',
 			'posts_per_page'   => 1,
-			'meta_query'       => array(
+			'meta_query'       => array( // phpcs:ignore
 				array(
 					'key'     => '_wp_attached_file',
 					'value'   => $file_name,
